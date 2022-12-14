@@ -103,7 +103,7 @@ class ExampleL1Prefetcher(implicit p: Parameters) extends L1Prefetcher {
     miss_hold := false.B
   }
 
-  io.dmem.req.valid := io.cpu.miss || miss_hold //io.dmem.req.valid := io.cpu.miss || miss_hold
+  io.dmem.req.valid := io.cpu.miss || miss_hold
   io.dmem.req.bits.addr := s2_req.addr
   io.dmem.req.bits.write := isWrite(s2_req.cmd)
 
@@ -112,22 +112,14 @@ class ExampleL1Prefetcher(implicit p: Parameters) extends L1Prefetcher {
 
 
 /**
- * TODO: Implement your custom prefetcher
+ * ECE5504 Final Project Implementation:
  */
-class CustomL1Prefetcher(implicit p: Parameters) extends L1Prefetcher {
+class SequentialL1Prefetcher(implicit p: Parameters) extends L1Prefetcher {
 
-  val prefetch_counter = RegInit(0.U(3.W))
-  //This creates a new 3-bit register called prefetch_counter and initializes it to 0. The width of the counter (3 bits in this case) determines how many times the prefetcher will prefetch 8 blocks before resetting the counter.
-
-
-  //val secondBlock = false.B
   val s1_valid = RegNext(io.cpu.req.valid, false.B)
   val s1_req = RegEnable(io.cpu.req.bits, io.cpu.req.valid)
   val s1_addr = s1_req.addr(coreMaxAddrBits-1, lgCacheBlockBytes)
   val s1_addr_next = s1_addr + 2.U // Compute address of next block
-
-  //val s1_addr_next_2 = s1_addr + 2.U // Compute addr of 2 blocks ahead
-
 
   val s2_req = RegNext(s1_req)
   s2_req.addr := Cat(s1_addr_next, 0.U(lgCacheBlockBytes.W))    //zero-padding to match the byte width
@@ -136,29 +128,18 @@ class CustomL1Prefetcher(implicit p: Parameters) extends L1Prefetcher {
   // Keep prefetch request active after a miss is signaled if L1D is not
   // immediately ready to accept it
   val miss_hold = RegInit(false.B)
-  when (io.cpu.miss /*|| secondBlock*/) {
+  when (io.cpu.miss) {
     miss_hold := true.B
   }
   // Clear flag after a prefetch request goes through or if another
   // memory request is arriving the next cycle
-  when (s1_valid || io.dmem.req.ready) {                    //possibly modify this to account for prefetch_counter?
+  when (s1_valid || io.dmem.req.ready) {
     miss_hold := false.B
   }
 
-  //io.dmem.req.valid := io.cpu.miss && !miss_hold
   io.dmem.req.valid := s1_addr % 2.U === 0.U
-  prefetch_counter := prefetch_counter + 1.U
-  //This code increments the value of prefetch_counter by 1 every time the prefetcher generates a prefetch request.
-
-  prefetch_counter := Mux(prefetch_counter === 2.U, 0.U, prefetch_counter)
-  //This code checks whether the value of prefetch_counter is equal to 8, and if so, resets it to 0. Otherwise, it leaves the value of prefetch_counter unchanged.
-
   io.dmem.req.bits.addr := s2_req.addr
   io.dmem.req.bits.write := isWrite(s2_req.cmd)
-
-  /* s2_req.addr := Cat(s1_addr_next_2, 0.U(lgCacheBlockBytes.W))
-  io.dmem.req.bits.addr := s2_req.addr
-  io.dmem.req.bits.write := isWrite(s2_req.cmd) */
 
   dontTouch(io.dmem.nack)
 
