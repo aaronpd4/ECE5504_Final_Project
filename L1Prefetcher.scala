@@ -145,6 +145,57 @@ class SequentialL1Prefetcher(implicit p: Parameters) extends L1Prefetcher {
 
 }
 
+/**
+ * ECE5504 Final Project Arbitary Stride Prefetcher Implementation:
+ */
+class ArbitaryStrideL1Prefetcher (implicit p: Parameters) extends L1Prefetcher {
+  // Setting size of basic history to 16
+  val historySize = 16
+  // Create a history buffer to store past addresses
+  val history = Reg(Vec(historySize, UInt(coreMaxAddrBits.W)))
+  // Set the default prefetch stride to 2
+  var stride = RegInit(2.U)
+
+  // Compute the next address to prefetch based on the current history
+  // and stride
+  val s1_valid = RegNext(io.cpu.req.valid, false.B)
+  val s1_req = RegEnable(io.cpu.req.bits, io.cpu.req.valid)
+  val s1_addr = s1_req.addr(coreMaxAddrBits-1, lgCacheBlockBytes)
+  val s1_addr_next = s1_addr + stride
+
+  // Store the current address in the history buffer and shift all
+  // previous entries to the left by one position
+  history(0) := s1_addr
+  for (i <- 1 until historySize) {
+    history(i) := history(i-1)
+  }
+
+  // Compute the stride size to be prefetched based on the history
+  stride = s1_addr - history(historySize - 1)
+
+  // Compute the next address to prefetch based on the stride and
+  // history
+  val s2_req = RegNext(s1_req)
+  s2_req.addr := Cat(s1_addr_next, 0.U(lgCacheBlockBytes.W))
+
+  // Keep prefetch request active after a miss is signaled if L1D is not
+  // immediately ready to accept it
+  val miss_hold = RegInit(false.B)
+  when (io.cpu.miss) {
+    miss_hold := true.B
+  }
+  // Clear flag after a prefetch request goes through or if another
+  // memory request is arriving the next cycle
+  when (s1_valid || io.dmem.req.ready) {
+    miss_hold := false.B
+  }
+
+  io.dmem.req.valid := io.cpu.miss && !miss_hold        //io.dmem.req.valid := io.cpu.miss || miss_hold
+  io.dmem.req.bits.addr := s2_req.addr
+  io.dmem.req.bits.write := isWrite(s2_req.cmd)
+
+  dontTouch(io.dmem.nack)
+}
 
 /**
  * Wrapper around C++ software model
